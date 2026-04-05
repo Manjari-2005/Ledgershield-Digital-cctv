@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Salami slicing{% endblock %}
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="page-hero-icon" aria-hidden="true"><i data-lucide="pie-chart" style="width:26px;height:26px;"></i></div>
+  <div>
+    <h1 class="page-title" style="margin-bottom:0.25rem;">Fraudulent transactions · salami slicing</h1>
+    <p class="lead" style="margin:0;">
+      Detect <strong>₹1–₹3</strong> micro-theft patterns: transactions <strong>≤ ₹10</strong> are aggregated in
+      <strong>{{ 5 }}-minute</strong> buckets. <strong>Circuit breaker</strong>: if <strong>&gt; 5,000 unique source accounts</strong>
+      pay the same destination within <strong>10 minutes</strong>, the sink is marked <strong>Pending Verification</strong>.
+      Low-value pushes (≤ ₹3) log simulated notifications. Combine <strong>TigerGraph</strong> samples with your uploaded sheet.
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="display:flex;align-items:center;gap:0.4rem;margin-top:0;">
+    <i data-lucide="upload-cloud" style="width:18px;height:18px;"></i>
+    Upload transaction spreadsheet
+  </h2>
+  <p class="lead" style="font-size:0.88rem;">
+    CSV columns (flexible names): <code>timestamp</code>, <code>amount</code> / <code>amount_inr</code>,
+    <code>source_account</code>, <code>destination_id</code> or <code>merchant_id</code>, optional <code>txn_id</code>.
+  </p>
+  <form id="salami-up" class="upload-drop" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,.txt" />
+    <p class="lead" style="margin:0.65rem 0 0;font-size:0.82rem;">Or paste CSV:</p>
+    <textarea class="input" name="csv" style="margin-top:0.35rem;min-height:100px;" placeholder="timestamp,amount_inr,source_account,destination_id&#10;2026-04-05 10:00:00,2.50,ACC001,MERCHANT_SINK_A&#10;2026-04-05 10:00:30,1.00,ACC002,MERCHANT_SINK_A"></textarea>
+    <button type="submit" class="btn purple" style="margin-top:0.75rem;">
+      <i data-lucide="database" style="width:16px;height:16px;"></i>
+      Ingest &amp; analyze
+    </button>
+  </form>
+  <pre id="upload-result" class="lead" style="font-size:0.78rem;white-space:pre-wrap;display:none;margin-top:0.75rem;"></pre>
+</div>
+
+<div class="two-col">
+  <div class="panel salami-chart-panel">
+    <h2 style="display:flex;align-items:center;gap:0.4rem;margin-top:0;">
+      <i data-lucide="activity" style="width:18px;height:18px;"></i>
+      Micro-transaction volume
+    </h2>
+    <p class="lead" style="font-size:0.8rem;margin-top:0;">
+      <strong>Line chart</strong> — count of ≤₹10 txs per 5-minute bucket (uploaded data). Falls back to TigerGraph sample buckets when no upload.
+    </p>
+    <canvas id="ch-line" height="120"></canvas>
+  </div>
+  <div class="panel">
+    <h2 style="display:flex;align-items:center;gap:0.4rem;margin-top:0;">
+      <i data-lucide="bell-ring" style="width:18px;height:18px;"></i>
+      Push-style notifications (≤ ₹3)
+    </h2>
+    <p class="lead" style="font-size:0.8rem;">Simulated alerts for ultra-low-value events (every rupee counts).</p>
+    <ul class="notif-strip" id="notif-list"></ul>
+    <p class="lead" style="font-size:0.72rem;margin:0.5rem 0 0;color:var(--muted);">
+      Z-score spikes (≥3σ) on bucket counts: <span id="z-spikes">—</span>
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="display:flex;align-items:center;gap:0.4rem;margin-top:0;">
+    <i data-lucide="alert-triangle" style="width:18px;height:18px;"></i>
+    Alert center · sink accounts
+  </h2>
+  <p class="lead" style="font-size:0.85rem;">
+    Destinations receiving dense micro-payments. Tripped = circuit breaker threshold on unique senders in a 10-minute sliding window.
+  </p>
+  <div id="sink-cards"></div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0;">Analyst actions log</h2>
+  <ul id="frozen-list" class="lead" style="font-size:0.85rem;padding-left:1rem;"></ul>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  let chart;
+
+  function sinkCard(s) {
+    const tripped = s.tripped;
+    const st = s.status || (tripped ? "Pending Verification" : "Monitoring");
+    return (
+      "<div class='sink-card " +
+      (tripped ? "tripped" : "") +
+      "'>" +
+      "<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;'>" +
+      "<h4><code style='font-size:0.85rem;'>" +
+      s.destination_id +
+      "</code></h4>" +
+      "<span class='badge " +
+      (tripped ? "demo" : "live") +
+      "'>" +
+      st +
+      "</span></div>" +
+      "<p style='margin:0.25rem 0 0.65rem;font-size:0.82rem;color:var(--muted);'>Micro-txs (≤₹10): " +
+      s.micro_count +
+      " · Peak unique sources / 10m window: " +
+      (s.unique_sources_max_window ?? "—") +
+      "</p>" +
+      "<div style='display:flex;gap:0.45rem;flex-wrap:wrap;'>" +
+      "<button type='button' class='btn danger' data-aid='" +
+      s.destination_id +
+      "' data-act='freeze'><i data-lucide='snowflake' style='width:14px;height:14px;'></i> Freeze destination</button>" +
+      "<button type='button' class='btn purple' data-aid='" +
+      s.destination_id +
+      "' data-act='refund'><i data-lucide='rotate-ccw' style='width:14px;height:14px;'></i> Auto-refund users</button>" +
+      "</div></div>"
+    );
+  }
+
+  async function loadSalami() {
+    const r = await fetch("/api/reports/salami");
+    const d = await r.json();
+    const ctx = document.getElementById("ch-line");
+    if (chart) chart.destroy();
+    const labels = (d.line_chart && d.line_chart.labels) || [];
+    const counts = (d.line_chart && d.line_chart.counts) || [];
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Micro-transactions / bucket",
+            data: counts,
+            borderColor: "rgba(192,132,252,0.98)",
+            backgroundColor: "rgba(168,85,247,0.14)",
+            fill: true,
+            tension: 0.35,
+            pointRadius: labels.length > 40 ? 0 : 4,
+            pointBackgroundColor: "rgba(232,121,249,0.95)",
+            pointBorderColor: "rgba(255,255,255,0.85)",
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: { legend: { display: true, labels: { color: "#c4b5fd" } } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: "#a78bfa" },
+            grid: { color: "rgba(139,92,246,0.12)" },
+            border: { color: "rgba(139,92,246,0.2)" },
+          },
+          x: {
+            ticks: { maxRotation: 45, minRotation: 0, color: "#a78bfa", font: { size: 10 } },
+            grid: { color: "rgba(139,92,246,0.08)" },
+            border: { color: "rgba(139,92,246,0.2)" },
+          },
+        },
+      },
+    });
+
+    const sinks = d.sinks && d.sinks.length ? d.sinks : d.tg_sinks || [];
+    document.getElementById("sink-cards").innerHTML = sinks.length ? sinks.map(sinkCard).join("") : "<p class='lead'>No sink data — upload a CSV or connect TigerGraph.</p>";
+
+    document.getElementById("sink-cards").querySelectorAll("button[data-aid]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        const id = b.getAttribute("data-aid");
+        const act = b.getAttribute("data-act");
+        const reason =
+          act === "freeze"
+            ? "Circuit breaker / salami sink — freeze destination (analyst)"
+            : "Salami pattern — auto-refund queue initiated (analyst)";
+        await fetch("/api/actions/" + (act === "freeze" ? "freeze" : "refund"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account_id: "DEST:" + id, reason: reason }),
+        });
+        loadFrozen();
+      });
+    });
+
+    const zs = (d.z_score_spike_buckets || []).join(", ") || "None in current window";
+    document.getElementById("z-spikes").textContent = zs;
+
+    const nl = document.getElementById("notif-list");
+    const np = d.notifications_preview || [];
+    nl.innerHTML = np.length
+      ? np.map((n) => "<li>" + (n.message || "") + "</li>").join("")
+      : "<li style='list-style:none;'>No low-value notifications yet — upload data with amounts ≤ ₹3.</li>";
+
+    loadFrozen();
+    if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+  }
+
+  async function loadFrozen() {
+    const r = await fetch("/api/actions/frozen");
+    const j = await r.json();
+    document.getElementById("frozen-list").innerHTML = (j.items || [])
+      .map((x) => "<li><code>" + x.account_id + "</code> — " + x.action + " — " + x.created_at + "</li>")
+      .join("");
+  }
+
+  document.getElementById("salami-up").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const res = await fetch("/api/reports/salami/upload", { method: "POST", body: fd });
+    const j = await res.json();
+    const box = document.getElementById("upload-result");
+    box.style.display = "block";
+    box.textContent = JSON.stringify(j, null, 2);
+    loadSalami();
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    loadSalami();
+    if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+  });
+</script>
+{% endblock %}

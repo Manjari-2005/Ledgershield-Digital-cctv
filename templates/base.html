@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark" data-fx="{{ fx_inr_per_usd }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}LedgerShield{% endblock %} · Digital CCTV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ledger.css') }}" />
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js" defer></script>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>LedgerShield</strong>
+        <small>Digital CCTV · TigerGraph</small>
+      </div>
+      <div class="nav-section">Monitor</div>
+      <nav class="nav">
+        <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' else '' }}">Main dashboard</a>
+        <a href="{{ url_for('graph_live') }}" class="{{ 'active' if request.endpoint == 'graph_live' else '' }}">Live fraud graph</a>
+      </nav>
+      <div class="nav-section">Data &amp; AI</div>
+      <nav class="nav">
+        <a href="{{ url_for('page_upload') }}" class="{{ 'active' if request.endpoint == 'page_upload' else '' }}">Data upload</a>
+        <a href="{{ url_for('page_analysis') }}" class="{{ 'active' if request.endpoint == 'page_analysis' else '' }}">AI analysis engine</a>
+        <a href="{{ url_for('page_documents') }}" class="{{ 'active' if request.endpoint == 'page_documents' else '' }}">Document verification</a>
+      </nav>
+      <div class="nav-section">Reports</div>
+      <nav class="nav">
+        <a href="{{ url_for('report_rings') }}" class="{{ 'active' if request.endpoint == 'report_rings' else '' }}">Detected rings</a>
+        <a href="{{ url_for('report_high_risk') }}" class="{{ 'active' if request.endpoint == 'report_high_risk' else '' }}">High-risk users</a>
+        <a href="{{ url_for('report_suspicious') }}" class="{{ 'active' if request.endpoint == 'report_suspicious' else '' }}">Suspicious records</a>
+        <a href="{{ url_for('report_salami') }}" class="{{ 'active' if request.endpoint == 'report_salami' else '' }}">Fraudulent transactions</a>
+      </nav>
+      <div class="nav-section">Admin</div>
+      <nav class="nav">
+        <a href="{{ url_for('page_employees') }}" class="{{ 'active' if request.endpoint == 'page_employees' else '' }}">Employee management</a>
+        <a href="{{ url_for('logout') }}">Sign out ({{ user }})</a>
+      </nav>
+      <div class="sidebar-tools">
+        <div class="toggle-row">
+          <span>Theme</span>
+          <button type="button" class="btn" data-theme-toggle>Dark mode</button>
+        </div>
+        <div class="toggle-row">
+          <span>Currency</span>
+          <div class="pill-group">
+            <button type="button" data-cur="USD">USD $</button>
+            <button type="button" data-cur="INR">INR ₹</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <main class="main">{% block content %}{% endblock %}</main>
+  </div>
+
+  <div id="onboard-backdrop" class="onboard-backdrop" role="dialog" aria-modal="true" aria-labelledby="onboard-title">
+    <div class="onboard-modal">
+      <h2 id="onboard-title">Welcome to LedgerShield</h2>
+      <p class="lead" style="margin:0 0 0.5rem;font-size:0.92rem;">
+        Digital CCTV for core banking — TigerGraph-backed entity graphs, internal fraud monitoring, and salami-slicing analytics.
+      </p>
+      <ul class="onboard-list">
+        <li><strong>Dashboard</strong> — KPIs: transaction volume, high-risk users, fraud rings, entity counts.</li>
+        <li><strong>Live fraud graph</strong> — Click a node for focus mode (dim others) and the inspector (risk, links, transactions).</li>
+        <li><strong>AI &amp; documents</strong> — Entity-merge suggestions, OCR + Ghost Buster checks (simulated Genkit flows).</li>
+        <li><strong>Suspicious records</strong> — Insider-threat style alerts with AI narrative; confirm or dismiss.</li>
+        <li><strong>Fraudulent transactions</strong> — Upload INR transaction sheets; micro-tx velocity, Z-score spikes, circuit breaker sinks.</li>
+        <li>Use the <strong>✨ co-pilot</strong> for platform Q&amp;A. Toggle <strong>theme</strong> and <strong>INR/USD</strong> in the sidebar.</li>
+      </ul>
+      <div class="onboard-actions">
+        <button type="button" class="btn purple" data-onboard-later>Get started</button>
+        <button type="button" class="btn ghost" data-onboard-close>Don&apos;t show this again</button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" id="sparkle-fab" title="LedgerShield co-pilot">✨</button>
+  <aside id="assistant-drawer">
+    <header>
+      <strong>Co-pilot</strong>
+      <button type="button" class="btn" id="assistant-close">Close</button>
+    </header>
+    <div id="assistant-messages">
+      <div class="msg bot">Ask about Cross-Entity Linking, suspicious records, Document Verification, or salami slicing detection. (Simulated assistant-flow.)</div>
+    </div>
+    <form id="assistant-form">
+      <input id="assistant-input" type="text" placeholder="Ask LedgerShield…" autocomplete="off" />
+      <button type="submit" class="btn primary">Send</button>
+    </form>
+  </aside>
+
+  <script>
+    document.documentElement.setAttribute("data-fx", "{{ fx_inr_per_usd }}");
+  </script>
+  <script src="{{ url_for('static', filename='js/ledger.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

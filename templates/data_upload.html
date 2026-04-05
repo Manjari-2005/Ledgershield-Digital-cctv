@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Data upload{% endblock %}
+{% block content %}
+<h1 class="page-title">Account data upload</h1>
+<p class="lead">
+  Upload CSV account metadata (phone, device, IP columns encouraged). Rows are stored for AI merge analysis and can be wired to TigerGraph loading jobs in production.
+</p>
+<div class="panel">
+  <h2>CSV file or paste</h2>
+  <form id="up-form" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,.txt" />
+    <p class="lead" style="margin:0.75rem 0;font-size:0.85rem;">Or paste below (header row required):</p>
+    <textarea class="input" name="csv" placeholder="account_id,phone,device_id,ip&#10;ACC-1,+91...,dev-a,ip-1"></textarea>
+    <p style="margin-top:0.75rem;"><button type="submit" class="btn primary">Upload</button></p>
+  </form>
+  <pre id="up-out" class="lead" style="margin-top:1rem;font-size:0.8rem;white-space:pre-wrap;"></pre>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  document.getElementById("up-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const r = await fetch("/api/upload/accounts", { method: "POST", body: fd });
+    const j = await r.json();
+    document.getElementById("up-out").textContent = JSON.stringify(j, null, 2);
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="page-title">Operations dashboard</h1>
+<p class="lead">
+  Real-time fraud KPIs sourced from your <strong>Transaction_Fraud</strong> TigerGraph graph.
+  Toggle <strong>INR</strong> or <strong>USD</strong> in the sidebar to reformat monetary metrics.
+</p>
+<p style="margin-top:-0.75rem;">
+  <span id="tg-status" class="badge">…</span>
+</p>
+
+<div class="grid-kpi">
+  <div class="card">
+    <label>Total transaction volume (est.)</label>
+    <div class="val" id="kpi-vol" data-usd="0">—</div>
+    <small class="lead" style="margin:0.35rem 0 0;font-size:0.75rem;">Scaled from REST sample when live</small>
+  </div>
+  <div class="card">
+    <label>High-risk users (score ≥ 0.8)</label>
+    <div class="val danger" id="kpi-hr">—</div>
+  </div>
+  <div class="card">
+    <label>Detected fraud rings</label>
+    <div class="val" id="kpi-rings">—</div>
+    <small class="lead" style="margin:0.35rem 0 0;font-size:0.75rem;"><code>Connected_Component</code> count</small>
+  </div>
+  <div class="card">
+    <label>Total tracked entities</label>
+    <div class="val ok" id="kpi-ent">—</div>
+    <small class="lead" style="margin:0.35rem 0 0;font-size:0.75rem;">Party + Device + IP + Account</small>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Quick links</h2>
+  <p class="lead" style="margin:0 0 0.75rem;">Open the live graph for ring anatomy, run AI merge analysis, or review internal suspicious records.</p>
+  <a class="btn primary" href="{{ url_for('graph_live') }}">Live fraud graph</a>
+  <a class="btn" href="{{ url_for('page_analysis') }}">AI entity resolution</a>
+  <a class="btn" href="{{ url_for('report_suspicious') }}">Suspicious records</a>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    const badge = document.getElementById("tg-status");
+    try {
+      const r = await fetch("/api/kpis");
+      const k = await r.json();
+      document.getElementById("kpi-vol").setAttribute("data-usd", String(k.total_tx_volume_usd || 0));
+      document.getElementById("kpi-hr").textContent = (k.high_risk_users ?? "—").toLocaleString();
+      document.getElementById("kpi-rings").textContent = (k.fraud_rings ?? "—").toLocaleString();
+      document.getElementById("kpi-ent").textContent = (k.total_entities ?? "—").toLocaleString();
+      if (window.LedgerShield) LedgerShield.applyCurrencyToDom();
+      if (k.demo) {
+        badge.className = "badge demo";
+        badge.textContent = "Demo / offline — configure TG_HOST & credentials";
+      } else {
+        badge.className = "badge live";
+        badge.textContent = "TigerGraph connected";
+      }
+    } catch {
+      badge.className = "badge demo";
+      badge.textContent = "API error";
+    }
+  });
+</script>
+{% endblock %}

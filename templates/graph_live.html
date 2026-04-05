@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}Live graph{% endblock %}
+{% block head_extra %}
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="page-hero-icon page-hero-icon--violet" aria-hidden="true"><i data-lucide="share-2" style="width:26px;height:26px;"></i></div>
+  <div>
+    <h1 class="page-title" style="margin-bottom:0.25rem;">Live fraud graph</h1>
+    <p class="lead" style="margin:0;">
+      Interactive <strong>force-directed</strong> view of a TigerGraph fraud ring: component → parties → shared devices &amp; IPs.
+      Click a node to enable <strong>focus mode</strong> (non-selected nodes fade) and a <strong>glow</strong> on the selection. Use the inspector to review risk, neighbors, and payment trails.
+    </p>
+  </div>
+</div>
+
+<div class="graph-workspace">
+  <div class="graph-toolbar">
+    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--muted);margin:0;">
+      <i data-lucide="filter" style="width:16px;height:16px;"></i>
+      Ring ID
+    </label>
+    <input class="input" id="ring-filter" placeholder="Optional — leave blank for first ring" style="max-width:220px;margin:0;" />
+    <button type="button" class="btn primary" id="reload-graph">
+      <i data-lucide="refresh-cw" style="width:16px;height:16px;"></i>
+      Reload graph
+    </button>
+    <button type="button" class="btn" id="reset-focus">
+      <i data-lucide="scan-eye" style="width:16px;height:16px;"></i>
+      Clear focus
+    </button>
+    <span class="hint">Tip: click empty canvas to clear focus. Hover edges for relationship labels.</span>
+  </div>
+
+  <div class="graph-legend" aria-hidden="true">
+    <span><span class="graph-dot" style="background:#7c3aed;box-shadow:0 0 8px rgba(167,139,250,0.7);"></span> Fraud ring</span>
+    <span><span class="graph-dot" style="background:#a855f7;"></span> Party / user</span>
+    <span><span class="graph-dot" style="background:#d946ef;"></span> Device</span>
+    <span><span class="graph-dot" style="background:#e879f9;"></span> IP address</span>
+  </div>
+
+  <div class="inspector">
+    <div>
+      <div id="graph-wrap"></div>
+    </div>
+    <div class="side-panel inspector-pro" id="inspector">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.75rem;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:0.35rem;">
+          <i data-lucide="panel-right" style="width:20px;height:20px;"></i>
+          Inspector
+        </h3>
+        <span class="badge live" id="insp-source">TigerGraph</span>
+      </div>
+      <p class="lead" style="font-size:0.82rem;margin:0 0 0.75rem;">Select any node to load entity intelligence.</p>
+      <div id="insp-body" style="color:var(--muted);font-size:0.88rem;">No selection</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+(function () {
+  let network = null;
+  let nodesDS = null;
+  let edgesDS = null;
+  const baseColors = {
+    ring: { bg: "#6d28d9", br: "#c4b5fd", size: 40 },
+    party: { bg: "#9333ea", br: "#e9d5ff", size: 32 },
+    device: { bg: "#c026d3", br: "#f5d0fe", size: 28 },
+    ip: { bg: "#e879f9", br: "#fdf4ff", size: 26 },
+  };
+
+  function mapNodes(raw, focusId) {
+    return raw.map((n) => {
+      const c = baseColors[n.group] || baseColors.party;
+      const dim = focusId && n.id !== focusId;
+      return {
+        id: n.id,
+        label: n.label,
+        title: n.title || n.label,
+        group: n.group,
+        rawType: n.vtype,
+        rawId: n.raw_id,
+        size: c.size,
+        color: dim
+          ? { background: "rgba(88,28,135,0.2)", border: "rgba(139,92,246,0.25)" }
+          : { background: c.bg, border: c.br },
+        borderWidth: focusId === n.id ? 4 : 2,
+        shadow:
+          focusId === n.id
+            ? { enabled: true, color: "rgba(232,121,249,0.95)", size: 32, x: 0, y: 0 }
+            : dim
+              ? false
+              : { enabled: true, color: "rgba(0,0,0,0.5)", size: 12, x: 1, y: 2 },
+        font: {
+          color: dim ? "rgba(196,181,253,0.42)" : "#ffffff",
+          size: n.group === "ring" ? 17 : 15,
+          face: "DM Sans",
+          bold: n.group === "ring",
+          strokeWidth: 2,
+          strokeColor: "rgba(0,0,0,0.4)",
+        },
+      };
+    });
+  }
+
+  function mapEdges(raw, focusId) {
+    return raw.map((e) => {
+      const involved = e.from === focusId || e.to === focusId;
+      const dim = focusId && !involved;
+      return {
+        from: e.from,
+        to: e.to,
+        title: e.label,
+        color: dim
+          ? { color: "rgba(91,33,182,0.12)", highlight: "rgba(167,139,250,0.35)" }
+          : { color: "rgba(192,132,252,0.55)", highlight: "#e879f9" },
+        width: dim ? 0.5 : 2.2,
+      };
+    });
+  }
+
+  async function loadGraph(focusId) {
+    const q = document.getElementById("ring-filter").value.trim();
+    const url = "/api/graph/ring" + (q ? "?ring_id=" + encodeURIComponent(q) : "");
+    const r = await fetch(url);
+    const g = await r.json();
+    document.getElementById("insp-source").textContent = g.source === "mock" ? "Demo data" : "TigerGraph";
+    const n = mapNodes(g.nodes || [], focusId);
+    const e = mapEdges(g.edges || [], focusId);
+    nodesDS = new vis.DataSet(n);
+    edgesDS = new vis.DataSet(e);
+    const el = document.getElementById("graph-wrap");
+    if (network) network.destroy();
+    network = new vis.Network(
+      el,
+      { nodes: nodesDS, edges: edgesDS },
+      {
+        nodes: {
+          shape: "dot",
+          scaling: { min: 22, max: 48 },
+        },
+        edges: {
+          smooth: { type: "continuous", roundness: 0.35 },
+        },
+        physics: {
+          enabled: true,
+          solver: "forceAtlas2Based",
+          forceAtlas2Based: {
+            gravitationalConstant: -52,
+            centralGravity: 0.012,
+            springLength: 180,
+            springConstant: 0.048,
+            avoidOverlap: 0.55,
+          },
+          stabilization: { iterations: 320, updateInterval: 25 },
+        },
+        interaction: {
+          hover: true,
+          tooltipDelay: 80,
+          multiselect: false,
+          zoomView: true,
+          dragView: true,
+        },
+      }
+    );
+
+    network.on("click", async (p) => {
+      if (!p.nodes.length) {
+        await loadGraph(null);
+        document.getElementById("insp-body").innerHTML =
+          "<p style='margin:0;color:var(--muted);'>No selection — graph reset to full visibility.</p>";
+        if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+        return;
+      }
+      const id = p.nodes[0];
+      await loadGraph(id);
+      const node = nodesDS.get(id);
+      document.getElementById("insp-body").innerHTML =
+        "<p style='margin:0;display:flex;align-items:center;gap:0.35rem;'><i data-lucide='loader-2' class='spin' style='width:18px;height:18px;animation:spin 0.8s linear infinite;'></i> Loading entity…</p>";
+      if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+      const vtype =
+        node.rawType ||
+        (node.group === "party" ? "Party" : node.group === "device" ? "Device" : node.group === "ip" ? "IP" : "Party");
+      const vid = node.rawId || id.replace(/^[pid]_/, "");
+      try {
+        const ir = await fetch("/api/entity/" + encodeURIComponent(vtype) + "/" + encodeURIComponent(vid));
+        const d = await ir.json();
+        const cur = window.LedgerShield ? LedgerShield.getCurrency() : "USD";
+        const fmt = (u) => (window.LedgerShield ? LedgerShield.formatMoney(u, cur) : "$" + u);
+        let html = "<div class='risk-meter'>" + (d.risk_score ?? "—") + "</div>";
+        html += "<p style='margin:0.25rem 0 0.85rem;font-size:0.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;'>Risk score</p>";
+        html +=
+          "<h4 style='margin:0.65rem 0 0.35rem;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);display:flex;align-items:center;gap:0.35rem;'><i data-lucide='git-branch' style='width:14px;height:14px;'></i> Linked entities</h4>";
+        html += "<ul style='margin:0 0 0.85rem;padding-left:1.05rem;font-size:0.82rem;line-height:1.45;max-height:140px;overflow:auto;'>";
+        (d.neighbors || []).slice(0, 16).forEach((x) => {
+          html +=
+            "<li style='margin-bottom:0.25rem;'>" +
+            x.vertex_type +
+            " <code style='font-size:0.76rem;'>" +
+            x.vertex_id +
+            "</code> <small style='color:var(--muted);'>(" +
+            x.edge +
+            ")</small></li>";
+        });
+        html += "</ul>";
+        html +=
+          "<h4 style='margin:0.65rem 0 0.35rem;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);display:flex;align-items:center;gap:0.35rem;'><i data-lucide='credit-card' style='width:14px;height:14px;'></i> Transactions</h4>";
+        html += "<ul class='tx-log'>";
+        (d.transactions || []).slice(0, 22).forEach((t) => {
+          const fl = t.flagged ? " <span class='check-fail'>FLAG</span>" : "";
+          html += "<li>" + fmt(t.amount_usd || 0) + " · " + (t.time || t.id) + fl + "</li>";
+        });
+        html += "</ul>";
+        if (d.error)
+          html += "<p class='check-fail' style='font-size:0.78rem;margin-top:0.5rem;'>" + d.error + "</p>";
+        document.getElementById("insp-body").innerHTML = html;
+      } catch {
+        document.getElementById("insp-body").textContent = "Could not load entity.";
+      }
+      if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+    });
+  }
+
+  document.getElementById("reload-graph").addEventListener("click", () => loadGraph(null));
+  document.getElementById("reset-focus").addEventListener("click", () => loadGraph(null));
+  document.addEventListener("DOMContentLoaded", () => {
+    loadGraph(null);
+    if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+  });
+})();
+</script>
+<style>
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>
+{% endblock %}

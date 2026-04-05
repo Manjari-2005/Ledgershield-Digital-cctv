@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · LedgerShield</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ledger.css') }}" />
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <h1>LedgerShield</h1>
+      <p>Simulated authentication — enter your display name to access the Digital CCTV hub (TigerGraph-backed).</p>
+      <form method="post" action="{{ url_for('login') }}">
+        <label class="lead" for="name" style="display:block;margin-bottom:0.35rem;font-size:0.85rem;">Your name</label>
+        <input class="input" id="name" name="name" required placeholder="e.g. Analyst Priya" style="width:100%;margin-bottom:1rem;" />
+        <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Enter operations room</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

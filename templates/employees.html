@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Employees{% endblock %}
+{% block content %}
+<h1 class="page-title">Employee management</h1>
+<p class="lead">Directory stored in SQLite (simulated HR feed). Bulk CSV: columns <code>name,email,role,department</code>.</p>
+<div class="panel">
+  <h2>Add employee</h2>
+  <form id="emp-one" style="max-width:480px;">
+    <input class="input" name="name" placeholder="Name" required style="margin-bottom:0.5rem;" />
+    <input class="input" name="email" placeholder="Email" style="margin-bottom:0.5rem;" />
+    <input class="input" name="role" placeholder="Role" style="margin-bottom:0.5rem;" />
+    <input class="input" name="department" placeholder="Department" style="margin-bottom:0.5rem;" />
+    <button type="submit" class="btn primary">Add</button>
+  </form>
+</div>
+<div class="panel">
+  <h2>Bulk upload (CSV paste)</h2>
+  <textarea class="input" id="bulk" placeholder="name,email,role,department&#10;Jane,j@bank.internal,Analyst,Fraud"></textarea>
+  <p style="margin-top:0.5rem;"><button type="button" class="btn" id="btn-bulk">Import</button></p>
+</div>
+<div class="panel">
+  <h2>Directory</h2>
+  <table class="data" id="tbl">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Dept</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  async function refresh() {
+    const r = await fetch("/api/employees");
+    const j = await r.json();
+    const tb = document.querySelector("#tbl tbody");
+    tb.innerHTML = "";
+    (j.employees || []).forEach((e) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td><code>" +
+        e.id +
+        "</code></td><td>" +
+        e.name +
+        "</td><td>" +
+        (e.email || "") +
+        "</td><td>" +
+        (e.role || "") +
+        "</td><td>" +
+        (e.department || "") +
+        "</td>";
+      tb.appendChild(tr);
+    });
+  }
+  document.getElementById("emp-one").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    await fetch("/api/employees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    e.target.reset();
+    refresh();
+  });
+  document.getElementById("btn-bulk").addEventListener("click", async () => {
+    const t = document.getElementById("bulk").value;
+    await fetch("/api/employees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bulk_text: t }),
+    });
+    document.getElementById("bulk").value = "";
+    refresh();
+  });
+  document.addEventListener("DOMContentLoaded", refresh);
+</script>
+{% endblock %}

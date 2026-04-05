@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}AI analysis{% endblock %}
+{% block content %}
+<h1 class="page-title">AI analysis engine</h1>
+<p class="lead">
+  Simulates Genkit flow <code>aiSuggestSyntheticIdentityMerge</code> — entity resolution suggestions with confidence and human-readable reasons.
+</p>
+<div class="panel">
+  <h2>Manual run</h2>
+  <p class="lead" style="font-size:0.88rem;">Comma-separated account IDs (optional — demo pairs generated if empty):</p>
+  <input class="input" id="acc-ids" placeholder="ACC-77821, ACC-90214" />
+  <p style="margin-top:0.75rem;">
+    <button type="button" class="btn primary" id="btn-manual">Run manual analysis</button>
+  </p>
+</div>
+<div class="panel">
+  <h2>Auto-detection mode</h2>
+  <p class="lead" style="font-size:0.88rem;">Continuous-style scan over uploaded context + graph-derived stubs (simulated).</p>
+  <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.9rem;">
+    <input type="checkbox" id="auto-on" />
+    Enable auto-detection (next run uses auto_mode)
+  </label>
+  <p style="margin-top:0.75rem;">
+    <button type="button" class="btn" id="btn-auto">Run auto scan</button>
+  </p>
+</div>
+<div class="panel">
+  <h2>Merge suggestions</h2>
+  <div id="merge-out" class="lead" style="font-size:0.88rem;color:var(--muted);">No results yet.</div>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  function renderMerge(j) {
+    const el = document.getElementById("merge-out");
+    if (!j.suggestions || !j.suggestions.length) {
+      el.textContent = "No suggestions returned.";
+      return;
+    }
+    el.innerHTML = j.suggestions
+      .map(
+        (s) =>
+          "<div class='card' style='margin-bottom:0.65rem;'>" +
+          "<strong>" +
+          s.confidence_pct +
+          "% confidence</strong> — " +
+          s.account_ids.join(" ↔ ") +
+          "<p style='margin:0.35rem 0 0;font-size:0.85rem;color:var(--muted);'>" +
+          s.reason +
+          "</p></div>"
+      )
+      .join("");
+  }
+  document.getElementById("btn-manual").addEventListener("click", async () => {
+    const raw = document.getElementById("acc-ids").value;
+    const ids = raw
+      .split(/[,\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const r = await fetch("/api/ai/merge-suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manual: true, account_ids: ids, auto_mode: false }),
+    });
+    renderMerge(await r.json());
+  });
+  document.getElementById("btn-auto").addEventListener("click", async () => {
+    const auto = document.getElementById("auto-on").checked;
+    const r = await fetch("/api/ai/merge-suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manual: false, auto_mode: auto, account_ids: [] }),
+    });
+    renderMerge(await r.json());
+  });
+</script>
+{% endblock %}

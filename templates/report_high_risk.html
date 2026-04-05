@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}High-risk users{% endblock %}
+{% block content %}
+<h1 class="page-title">High-risk users</h1>
+<p class="lead">Parties with modelled risk score ≥ <strong>0.8</strong> (TigerGraph <code>Party</code> attributes + fraud signals).</p>
+<div class="panel">
+  <table class="data" id="tbl">
+    <thead>
+      <tr>
+        <th>Party ID</th>
+        <th>Name</th>
+        <th>Risk</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  fetch("/api/reports/high-risk")
+    .then((r) => r.json())
+    .then((j) => {
+      const tb = document.querySelector("#tbl tbody");
+      (j.users || []).forEach((u) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td><code>" +
+          u.party_id +
+          "</code></td><td>" +
+          (u.name || "") +
+          "</td><td class='check-fail' style='font-weight:700;'>" +
+          (u.risk || 0).toFixed(3) +
+          "</td>";
+        tb.appendChild(tr);
+      });
+    });
+</script>
+{% endblock %}

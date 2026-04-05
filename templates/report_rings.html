@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Rings{% endblock %}
+{% block content %}
+<h1 class="page-title">Detected fraud rings</h1>
+<p class="lead">TigerGraph <code>Connected_Component</code> with parties, shared device heuristic, and per-account risk scores.</p>
+<div class="panel">
+  <table class="data" id="tbl">
+    <thead>
+      <tr>
+        <th>Ring ID</th>
+        <th>Shared device (heuristic)</th>
+        <th>Accounts in ring</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  fetch("/api/reports/rings")
+    .then((r) => r.json())
+    .then((j) => {
+      const tb = document.querySelector("#tbl tbody");
+      (j.rings || []).forEach((x) => {
+        const tr = document.createElement("tr");
+        const acc = (x.accounts || [])
+          .map((a) => a.id + " (" + (a.risk || 0).toFixed(2) + ")")
+          .join(", ");
+        tr.innerHTML =
+          "<td><code>" +
+          x.ring_id +
+          "</code></td><td><code>" +
+          x.shared_device +
+          "</code></td><td style='font-size:0.82rem;'>" +
+          acc +
+          "</td>";
+        tb.appendChild(tr);
+      });
+    });
+</script>
+{% endblock %}

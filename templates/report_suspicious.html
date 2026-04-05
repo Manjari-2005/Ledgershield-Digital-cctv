@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Suspicious records{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="page-hero-icon" aria-hidden="true"><i data-lucide="siren" style="width:26px;height:26px;"></i></div>
+  <div>
+    <h1 class="page-title" style="margin-bottom:0.25rem;">Suspicious records</h1>
+    <p class="lead" style="margin:0;">
+      AI-driven alerts for <strong>suspicious internal activities</strong> and record manipulations. Each card includes an
+      <strong>AI narrative</strong>, risk score, and context. Confirm to escalate or dismiss as benign.
+    </p>
+  </div>
+</div>
+
+<div id="alerts-empty" class="panel lead" style="display:none;text-align:center;padding:2rem;">
+  No open alerts — dismissed items are hidden. Refresh the page after DB reset to see demo alerts.
+</div>
+<div class="suspicion-grid" id="alerts-grid"></div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  function icon(name, cls) {
+    return '<i data-lucide="' + name + '" class="' + (cls || "") + '" style="width:16px;height:16px;"></i>';
+  }
+
+  function renderAlerts(list) {
+    const grid = document.getElementById("alerts-grid");
+    const empty = document.getElementById("alerts-empty");
+    grid.innerHTML = "";
+    if (!list.length) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    list.forEach((a) => {
+      const card = document.createElement("article");
+      card.className = "suspicion-card";
+      card.innerHTML =
+        "<div class='suspicion-card-head'>" +
+        "<h3>" +
+        (a.title || "Alert") +
+        "</h3>" +
+        "<div class='risk-pill' title='Model risk score'>" +
+        icon("shield-alert") +
+        " Score: " +
+        (a.risk_score ?? "—") +
+        "</div></div>" +
+        "<div class='suspicion-meta'>" +
+        "<div class='suspicion-meta-row'>" +
+        icon("user") +
+        "<span><strong>" +
+        (a.employee_name || "—") +
+        "</strong> (" +
+        (a.job_title || "") +
+        ")</span></div>" +
+        "<div class='suspicion-meta-row'>" +
+        icon("building-2") +
+        "<span>" +
+        (a.branch || "—") +
+        "</span></div>" +
+        "<div class='suspicion-meta-row'>" +
+        icon("clock") +
+        "<span>" +
+        (a.event_time || a.created_at || "") +
+        "</span></div></div>" +
+        "<div class='ai-narrative-block'>" +
+        "<div class='ai-narrative-label'>" +
+        icon("sparkles") +
+        " AI Narrative</div>" +
+        "<p class='ai-narrative-text'>" +
+        (a.narrative || "") +
+        "</p></div>" +
+        "<div class='suspicion-actions'>" +
+        "<button type='button' class='btn ghost' data-dismiss='" +
+        a.id +
+        "'>" +
+        icon("x") +
+        " Dismiss</button>" +
+        "<button type='button' class='btn purple' data-confirm='" +
+        a.id +
+        "'>" +
+        icon("check") +
+        " Confirm alert</button></div>";
+      grid.appendChild(card);
+    });
+
+    grid.querySelectorAll("[data-dismiss]").forEach((btn) => {
+      btn.addEventListener("click", () => act(btn.getAttribute("data-dismiss"), "dismiss"));
+    });
+    grid.querySelectorAll("[data-confirm]").forEach((btn) => {
+      btn.addEventListener("click", () => act(btn.getAttribute("data-confirm"), "confirm"));
+    });
+
+    if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+  }
+
+  async function act(id, action) {
+    await fetch("/api/reports/suspicious/" + encodeURIComponent(id) + "/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: action }),
+    });
+    const r = await fetch("/api/reports/suspicious");
+    const j = await r.json();
+    renderAlerts(j.alerts || []);
+  }
+
+  fetch("/api/reports/suspicious")
+    .then((r) => r.json())
+    .then((j) => renderAlerts(j.alerts || []));
+</script>
+{% endblock %}

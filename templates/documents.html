@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Documents{% endblock %}
+{% block content %}
+<h1 class="page-title">Document verification</h1>
+<p class="lead">
+  Upload a file — OCR is <strong>simulated</strong>. <strong>Ghost Buster</strong> runs registry checks (mock APIs) and cross-references internal risk patterns.
+  Tip: filename containing <code>deed</code> triggers stricter internal flags for demos.
+</p>
+<div class="panel">
+  <h2>Upload</h2>
+  <form id="doc-form" enctype="multipart/form-data">
+    <input type="file" name="file" required />
+    <button type="submit" class="btn primary" style="margin-top:0.75rem;">Analyze document</button>
+  </form>
+</div>
+<div class="panel">
+  <h2>OCR extract</h2>
+  <pre id="ocr-out" class="lead" style="font-size:0.82rem;white-space:pre-wrap;">—</pre>
+</div>
+<div class="panel">
+  <h2>Ghost Buster results</h2>
+  <div id="gb-out" class="lead" style="font-size:0.88rem;">—</div>
+</div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  document.getElementById("doc-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const r = await fetch("/api/documents/verify", { method: "POST", body: fd });
+    const j = await r.json();
+    document.getElementById("ocr-out").textContent = JSON.stringify(j.ocr, null, 2);
+    const v = j.verification || {};
+    let html = "<p><strong>Overall:</strong> " + (v.overall_status || "—") + "</p><ul>";
+    (v.checks || []).forEach((c) => {
+      const cls = c.passed ? "check-pass" : "check-fail";
+      html += "<li class='" + cls + "'><strong>" + c.name + "</strong> — " + c.detail + "</li>";
+    });
+    html += "</ul>";
+    if ((v.flags || []).length) {
+      html += "<h3 style='margin:0.75rem 0 0.35rem;font-size:0.85rem;'>High-risk flags</h3><ul>";
+      v.flags.forEach((f) => {
+        html += "<li class='check-fail'><strong>" + f.level + "</strong>: " + f.text + "</li>";
+      });
+      html += "</ul>";
+    }
+    document.getElementById("gb-out").innerHTML = html;
+  });
+</script>
+{% endblock %}
