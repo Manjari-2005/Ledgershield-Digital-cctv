@@ -8,3 +8,4 @@ data/*.db
 .vscode/
 .cursor/
 *.log
+.env.example
